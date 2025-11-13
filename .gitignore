@@ -1,0 +1,17 @@
+# Godot 4
+.import/
+.godot/
+mono/
+# Export and temp
+export/
+*.tmp
+*.temp
+*.log
+# OS artifacts
+Thumbs.db
+.DS_Store
+# Local user files
+res://user/
+# Python/Notebook caches (if any)
+__pycache__/
+.ipynb_checkpoints/

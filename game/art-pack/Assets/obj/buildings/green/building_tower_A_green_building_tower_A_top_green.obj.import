@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://fx3l3xcnmitv"
+path="res://.godot/imported/building_tower_A_green_building_tower_A_top_green.obj-7412b1194d922f0525af2f4157c5ac5f.mesh"
+
+[deps]
+
+files=["res://.godot/imported/building_tower_A_green_building_tower_A_top_green.obj-7412b1194d922f0525af2f4157c5ac5f.mesh"]
+
+source_file="res://art-pack/Assets/obj/buildings/green/building_tower_A_green_building_tower_A_top_green.obj"
+dest_files=["res://.godot/imported/building_tower_A_green_building_tower_A_top_green.obj-7412b1194d922f0525af2f4157c5ac5f.mesh", "res://.godot/imported/building_tower_A_green_building_tower_A_top_green.obj-7412b1194d922f0525af2f4157c5ac5f.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
