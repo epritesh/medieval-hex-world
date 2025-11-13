@@ -39,23 +39,30 @@ A cozy low‑poly hex world where the player explores, gathers resources, builds
 - [x] Basic input mapping review (actions + camera)
 - [ ] Git repository initialized
 
-### Milestone 1 – Terrain Generation Core (Current Focus)
+### Milestone 1 – Terrain Generation Core ✅
+
 Goal: Generate a hex map with seeded noise producing biome + elevation + water.
 Checklist:
+
 - [x] Introduce `WorldConfig` resource (seed, radius, biome weights)
 - [x] Implement noise wrapper (`NoiseProvider.gd`) using `FastNoiseLite`
 - [x] Assign tile types: grass / water / hill / high hill
 - [x] Elevate hills (y offset + slope mesh swap)
-- [ ] Flood fill lakes (ensure contiguous water areas)
-- [ ] Edge shaping: soften map rim (fade to water or coast)
+- [x] Flood fill lakes (ensure contiguous water areas)
+- [x] Edge shaping: soften map rim (fade to water or coast)
 - [x] Deterministic generation from seed UI field
 - [x] Regenerate button in world UI panel
+
 Deliverables:
+
 - Regenerated map differs per seed, stable per same seed.
 
-### Milestone 2 – Terrain Decoration
+
+### Milestone 2 – Terrain Decoration (Current Focus)
+
 Goal: Natural visuals for each biome.
 Checklist:
+
 - [ ] Decoration loader (config JSON/Resource) per biome
 - [ ] Random prop placement with density & collision avoidance
 - [ ] Simple pseudo‑random using hashed axial coordinate + seed
@@ -63,8 +70,10 @@ Checklist:
 - [ ] Toggle decorations (perf testing)
 
 ### Milestone 3 – Structures & Placement
+
 Goal: Player can place and remove medieval buildings.
 Checklist:
+
 - [ ] Building data definitions (cost, footprint, category)
 - [ ] Placement preview ghost with validity coloring
 - [ ] Footprint collision check vs terrain type & existing structures
@@ -72,8 +81,10 @@ Checklist:
 - [ ] Persistent storage of placed buildings
 
 ### Milestone 4 – Resource & Economy Loop
+
 Goal: Time‑based production & consumption.
 Checklist:
+
 - [ ] Core resources (Wood, Stone, Food, Gold)
 - [ ] Production component on buildings (rate / capacity / workers)
 - [ ] Tick system (fixed timestep) vs frame
@@ -81,54 +92,67 @@ Checklist:
 - [ ] Balancing pass (spreadsheet or JSON tweaks)
 
 ### Milestone 5 – Unit / Agent System
+
 Goal: Simple workers performing tasks.
 Checklist:
+
 - [ ] Pathfinding (grid axial → world A* or navigation mesh)
 - [ ] Task queue: gather, deliver, construct
 - [ ] Worker assignment logic
 - [ ] Idle animations / states
 
 ### Milestone 6 – UI & Feedback Layer
+
 Goal: Communicative interface.
 Checklist:
+
 - [ ] Selection info panel (tile type, elevation, held structure)
 - [ ] Build menu (categories + hotkeys)
 - [ ] Resource bar + production rate indicators
 - [ ] Notifications / floating text events
 
 ### Milestone 7 – Audio & Atmosphere
+
 Goal: Mood & immersion.
 Checklist:
+
 - [ ] Ambient loop(s) cross‑fade daytime/night
 - [ ] SFX triggers (place building, select tile, resource tick)
 - [ ] Basic dynamic sky (procedural/skybox swap)
 - [ ] Time of day progression
 
 ### Milestone 8 – Save/Load & Persistence
+
 Goal: Stable state across sessions.
 Checklist:
+
 - [ ] Serialize tile type + elevation + seed only (derivable) vs storing full mesh
 - [ ] Serialize building list & worker states
 - [ ] Versioning & migration (header with schema version)
 
 ### Milestone 9 – Performance & Polish
+
 Goal: Stable FPS on mid hardware.
 Checklist:
+
 - [ ] Convert tiles to `MultiMeshInstance3D`
 - [ ] Frustum & distance culling of decorations
 - [ ] Profiler review (scripts & rendering)
 - [ ] Replace debug materials with final palette / shaders
 
 ### Milestone 10 – Packaging & Release Prep
+
 Goal: Public playable build.
 Checklist:
+
 - [ ] Export presets (Windows / Linux)
 - [ ] Basic settings (resolution, full‑screen, audio volume)
 - [ ] README & itch.io page assets (screenshots, GIFs)
 - [ ] License & attribution (KayKit, Godot)
 
 ## Suggested Folder Structure (Future)
-```
+
+```text
 res://
   scripts/
     world/
@@ -145,6 +169,7 @@ res://
 ```
 
 ## Risk & Mitigation Snapshot
+
 | Risk | Mitigation |
 |------|------------|
 | Performance with many props | Early MultiMesh + culling |
@@ -154,10 +179,11 @@ res://
 
 ## Next Immediate Actions
 
-1. Flood fill lakes and rim shaping.
-2. Add brightness slider + sun angle presets in `WorldUI`.
-3. Add variety controls (toggle rotations/tint, strength slider).
-4. Prepare decoration system scaffold (config + placement hooks).
+1. Scaffold decoration system (config Resource + placement hooks).
+2. Implement random prop placement with density + collision checks.
+3. Hash-based per-tile randomness for props (seed + axial).
+4. Add WorldUI toggle to enable/disable decorations (for perf testing).
+5. Optional: Day/Night light presets in `WorldUI`.
 
 ---
 Update this plan weekly; archive completed milestones.

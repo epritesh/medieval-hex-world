@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="DecorationConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/DecorationConfig.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+enable_decorations = true
+biome_scenes = {"grass": PackedStringArray("res://art-pack/Assets/gltf/decoration/nature/trees_A_small.gltf", "res://art-pack/Assets/gltf/decoration/nature/tree_single_A.gltf", "res://art-pack/Assets/gltf/decoration/nature/rock_single_A.gltf"), "hill_low": PackedStringArray("res://art-pack/Assets/gltf/decoration/nature/trees_B_small.gltf", "res://art-pack/Assets/gltf/decoration/nature/rock_single_B.gltf"), "hill_high": PackedStringArray("res://art-pack/Assets/gltf/decoration/nature/trees_A_medium.gltf", "res://art-pack/Assets/gltf/decoration/nature/rock_single_C.gltf")}
+biome_density = {"grass": 0.15, "hill_low": 0.1, "hill_high": 0.08}
+offset_scale = 0.8

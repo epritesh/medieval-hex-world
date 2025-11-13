@@ -11,6 +11,10 @@ extends Camera3D
 @export var zoom_lerp_speed: float = 10.0
 @export var clamp_camera: bool = true
 @export var clamp_radius: float = 100.0
+@export var near_plane: float = 0.8
+@export var far_plane: float = 500.0
+@export var use_taa: bool = false
+@export var msaa_samples: Viewport.MSAA = Viewport.MSAA_8X
 
 func set_clamp_radius(r: float) -> void:
 	clamp_radius = r
@@ -24,6 +28,27 @@ func _ready() -> void:
 	rotation = Vector3(pitch, yaw, 0.0)
 	set_process(true)
 	_target_fov = fov
+	# Improve depth precision and reduce z-fighting shimmer
+	near = near_plane
+	far = far_plane
+	# Configure anti-aliasing. Prefer MSAA to avoid temporal jitter while stationary
+	var vp := get_viewport()
+	if vp:
+		vp.use_taa = use_taa
+		vp.msaa_3d = msaa_samples
+		# Configure screen-space AA: FXAA when not using TAA; disable otherwise (TAA is controlled by use_taa)
+		if not use_taa:
+			vp.screen_space_aa = Viewport.ScreenSpaceAA.SCREEN_SPACE_AA_FXAA
+		else:
+			vp.screen_space_aa = Viewport.ScreenSpaceAA.SCREEN_SPACE_AA_DISABLED
+
+func _reset_camera() -> void:
+	# Reset to a sensible vantage over origin
+	yaw = 0.0
+	pitch = -0.4
+	rotation = Vector3(pitch, yaw, 0.0)
+	global_position = Vector3(0, 18, 26)
+	_target_fov = clamp(_target_fov, min_fov, max_fov)
 
 func _process(delta: float) -> void:
 	var dir := Vector3.ZERO
@@ -44,8 +69,8 @@ func _process(delta: float) -> void:
 	if dir != Vector3.ZERO:
 		dir = dir.normalized()
 		# Build basis from yaw only for horizontal movement
-		var basis := Basis(Vector3.UP, yaw)
-		var move_vec := basis.x * dir.x + (-basis.z) * dir.z + Vector3.UP * dir.y
+		var yaw_basis := Basis(Vector3.UP, yaw)
+		var move_vec := yaw_basis.x * dir.x + (-yaw_basis.z) * dir.z + Vector3.UP * dir.y
 		global_position += move_vec * speed * delta
 
 	# Clamp XZ distance from origin if enabled
@@ -81,3 +106,7 @@ func _input(event: InputEvent) -> void:
 			_target_fov = clamp((_target_fov if zoom_smooth else fov) + zoom_step_fov * scroll_dir, min_fov, max_fov)
 			if not zoom_smooth:
 				fov = _target_fov
+	elif event is InputEventKey and event.pressed and not event.echo:
+		var kev := event as InputEventKey
+		if kev.keycode == KEY_R:
+			_reset_camera()

@@ -1,6 +1,7 @@
 extends Node3D
 
 @export var world_config: WorldConfig
+@export var decoration_config: DecorationConfig
 @export var map_radius: int = 8
 @export var tile_size: float = 1.0
 @export var pointy_top: bool = true
@@ -11,12 +12,24 @@ extends Node3D
 @export var water_tile_path: String = "res://art-pack/Assets/gltf/tiles/base/hex_water.gltf"
 @export var selection_ring_color: Color = Color(1.0, 0.8, 0.2, 0.55)
 
+# Variety controls
+@export var enable_variety_rotation: bool = true
+@export var enable_variety_tint: bool = true
+@export var variety_tint_jitter: float = 0.2 # amplitude around 1.0 (e.g., 0.2 => 0.9..1.1)
+
+# Water shaping
+@export var lake_smooth_iterations: int = 1
+@export var rim_soften_strength: float = 0.3 # pushes biome toward water near the map rim
+@export var decorations_enabled: bool = true
+
 var TileScene: PackedScene
 var tiles: Dictionary = {} # Dictionary keyed by Vector2(q, r) -> Node3D
 var selection_ring: MeshInstance3D
 var selected_axial: Vector2 = Vector2.INF
 var _tile_cache: Dictionary = {}
 var noise: NoiseProvider
+var decorations_root: Node3D
+var last_grid: Dictionary = {}
 
 func _ready() -> void:
 	# Load or assign WorldConfig
@@ -24,6 +37,12 @@ func _ready() -> void:
 		var cfg: Resource = load("res://resources/world_config.tres")
 		if cfg != null:
 			world_config = cfg as WorldConfig
+
+	# Load DecorationConfig
+	if decoration_config == null:
+		var dcfg: Resource = load("res://resources/decoration_config.tres")
+		if dcfg != null:
+			decoration_config = dcfg as DecorationConfig
 
 	# Setup noise if we have config
 	if world_config != null:
@@ -33,6 +52,11 @@ func _ready() -> void:
 
 	# Legacy single-scene fallback for older code paths
 	TileScene = load(tile_scene_path)
+
+	# Create decorations root BEFORE generating tiles/decorations
+	decorations_root = Node3D.new()
+	decorations_root.name = "Decorations"
+	add_child(decorations_root)
 
 	_generate_hex_map(map_radius)
 	_create_selection_ring()
@@ -60,38 +84,96 @@ func _axial_to_world(q: float, r: float) -> Vector3:
 		return Vector3(x, 0.0, z)
 
 func _generate_hex_map(radius: int) -> void:
+	var grid: Dictionary = _compute_tile_grid(radius)
+	last_grid = grid
+	_smooth_water(grid, lake_smooth_iterations)
+	# Instantiate
+	for key in grid.keys():
+		var data: TileInfo = grid[key] as TileInfo
+		var tile_type: String = data.type
+		var height_y: float = data.height
+		var q: int = int(key.x)
+		var r: int = int(key.y)
+		var scene: PackedScene = _get_tile_scene(tile_type)
+		var tile: Node = scene.instantiate()
+		if tile is Node3D:
+			var pos: Vector3 = _axial_to_world(q, r)
+			pos.y = height_y
+			if tile_type == "water":
+				pos.y += 0.01
+			var n3: Node3D = tile as Node3D
+			n3.position = pos
+			n3.set_meta("q", q)
+			n3.set_meta("r", r)
+			_apply_variety(n3, tile_type, q, r)
+			tiles[Vector2(q, r)] = tile
+			add_child(tile)
+		else:
+			push_warning("Tile scene root is not Node3D; skipping instance at %s,%s" % [q, r])
+
+	# Decorations after tiles
+	_build_decorations(grid)
+
+class TileInfo:
+	var type: String
+	var elev: float
+	var height: float
+
+func _compute_tile_grid(radius: int) -> Dictionary:
+	var grid: Dictionary = {}
 	for q in range(-radius, radius + 1):
 		var r1: int = maxi(-radius, -q - radius)
 		var r2: int = mini(radius, -q + radius)
 		for r in range(r1, r2 + 1):
 			var tile_type: String = "grass"
 			var height_y: float = 0.0
+			var elev_val: float = 0.0
 			if noise != null and world_config != null:
 				var b: float = noise.get_biome_value(q, r)
+				# Rim softening: push toward water near edge
+				var dist: int = max(abs(q), abs(r), abs(-q - r))
+				var t_edge: float = clamp((float(dist) - float(radius - 2)) / 3.0, 0.0, 1.0)
+				b -= t_edge * rim_soften_strength
 				if b < world_config.water_threshold:
 					tile_type = "water"
 				else:
-					var e: float = noise.get_elevation_value(q, r)
-					height_y = _elevation_to_height(e)
-					if e > world_config.high_hill_threshold:
+					elev_val = noise.get_elevation_value(q, r)
+					height_y = _elevation_to_height(elev_val)
+					if elev_val > world_config.high_hill_threshold:
 						tile_type = "hill_high"
-					elif e > world_config.hill_threshold:
+					elif elev_val > world_config.hill_threshold:
 						tile_type = "hill_low"
 
-			var scene: PackedScene = _get_tile_scene(tile_type)
-			var tile: Node = scene.instantiate()
-			if tile is Node3D:
-				var pos := _axial_to_world(q, r)
-				pos.y = height_y
-				var n3 := tile as Node3D
-				n3.position = pos
-				(tile as Node3D).set_meta("q", q)
-				(tile as Node3D).set_meta("r", r)
-				_apply_variety(n3, tile_type, q, r)
-				tiles[Vector2(q, r)] = tile
-				add_child(tile)
-			else:
-				push_warning("Tile scene root is not Node3D; skipping instance at %s,%s" % [q, r])
+			var info := TileInfo.new()
+			info.type = tile_type
+			info.elev = elev_val
+			info.height = height_y
+			grid[Vector2(q, r)] = info
+	return grid
+
+func _smooth_water(grid: Dictionary, iterations: int) -> void:
+	if iterations <= 0:
+		return
+	var dirs: Array[Vector2] = [Vector2(1,0), Vector2(1,-1), Vector2(0,-1), Vector2(-1,0), Vector2(-1,1), Vector2(0,1)]
+	for _i in range(iterations):
+		var changes: Array = []
+		for key in grid.keys():
+			var key_v2: Vector2 = key as Vector2
+			var info: TileInfo = grid[key_v2]
+			var water_neighbors: int = 0
+			for d in dirs:
+				var nk: Vector2 = key_v2 + d
+				if grid.has(nk) and grid[nk].type == "water":
+					water_neighbors += 1
+			if info.type == "water" and water_neighbors <= 1:
+				changes.append({"k": key_v2, "t": "grass"})
+			elif info.type != "water" and water_neighbors >= 4:
+				changes.append({"k": key_v2, "t": "water", "h": 0.0})
+		for c in changes:
+			var inf: TileInfo = grid[c["k"]] as TileInfo
+			inf.type = c["t"]
+			if c.has("h"):
+				inf.height = c["h"]
 
 func _get_tile_scene(tile_type: String) -> PackedScene:
 	if _tile_cache.has(tile_type):
@@ -111,12 +193,12 @@ func _get_tile_scene(tile_type: String) -> PackedScene:
 	return ps
 
 func _debug_dump_input_map() -> void:
-	var lines := []
+	var lines: Array = []
 	lines.append("[InputMap Dump]")
 	var actions: Array = InputMap.get_actions()
 	for a in actions:
 		var evs: Array = InputMap.action_get_events(a)
-		var names := []
+		var names: Array = []
 		for e in evs:
 			if e is InputEventKey:
 				names.append("key:" + str((e as InputEventKey).keycode))
@@ -160,6 +242,10 @@ func regenerate_world() -> void:
 			n.queue_free()
 	tiles.clear()
 	_tile_cache.clear()
+	# Clear decorations
+	if decorations_root != null:
+		for c in decorations_root.get_children():
+			c.queue_free()
 
 	# Re-seed noise
 	if world_config != null:
@@ -175,11 +261,76 @@ func regenerate_world() -> void:
 	if cam and cam.has_method("set_clamp_radius"):
 		cam.set_clamp_radius(_approx_world_radius(map_radius))
 
+func rebuild_decorations() -> void:
+	if decorations_root != null:
+		for c in decorations_root.get_children():
+			c.queue_free()
+	if last_grid != null and last_grid.size() > 0:
+		_build_decorations(last_grid)
+
+func _build_decorations(grid: Dictionary) -> void:
+	if not decorations_enabled:
+		return
+	if decoration_config == null or not decoration_config.enable_decorations:
+		return
+	# Safety: ensure decorations_root exists
+	if decorations_root == null:
+		decorations_root = Node3D.new()
+		decorations_root.name = "Decorations"
+		add_child(decorations_root)
+	# For each tile, with probability per biome, place at most one prop
+	for key in grid.keys():
+		var info: TileInfo = grid[key] as TileInfo
+		var biome: String = info.type
+		if biome == "water":
+			continue
+		var scenes: Array = []
+		if decoration_config.biome_scenes.has(biome):
+			scenes = decoration_config.biome_scenes[biome]
+		if scenes.is_empty():
+			continue
+		var density: float = 0.0
+		if decoration_config.biome_density.has(biome):
+			density = float(decoration_config.biome_density[biome])
+		if density <= 0.0:
+			continue
+		# Deterministic RNG per tile for decorations
+		var s: int = world_config.seed if world_config != null else 12345
+		var seed_mix: int = int((int(s) * 2654435761) ^ (int(key.x) * 374761393) ^ (int(key.y) * 668265263)) & 0x7fffffff
+		var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+		rng.seed = seed_mix
+		if rng.randf() > density:
+			continue
+		# Pick a scene path and load
+		var idx: int = int(rng.randi()) % scenes.size()
+		var path: String = scenes[idx]
+		var ps: PackedScene = load(path)
+		if ps == null:
+			continue
+		var inst: Node = ps.instantiate()
+		if not (inst is Node3D):
+			continue
+		# Position near tile center with small random offset
+		var q: int = int(key.x)
+		var r: int = int(key.y)
+		var center: Vector3 = _axial_to_world(q, r)
+		var radius: float = tile_size * 0.5 * clamp(decoration_config.offset_scale, 0.0, 1.0)
+		var ang: float = rng.randf() * TAU
+		var rad: float = sqrt(rng.randf()) * radius
+		var offset: Vector3 = Vector3(cos(ang) * rad, 0.0, sin(ang) * rad)
+		var pos: Vector3 = center + offset
+		# Sit on tile's height
+		pos.y = info.height
+		var n3: Node3D = inst as Node3D
+		n3.position = pos
+		n3.rotation.y = rng.randf() * TAU
+		decorations_root.add_child(n3)
+
 func _approx_world_radius(r: int) -> float:
 	# Conservative world radius in meters from origin to edge for given axial radius
-	var extra := 0.5
-	var rx := tile_size * sqrt(3.0) * (r + extra)
-	var rz := tile_size * 1.5 * (r + extra)
+	var extra: float = 0.5
+	var rx: float = tile_size * sqrt(3.0) * (r + extra)
+	var rz: float = tile_size * 1.5 * (r + extra)
 	return max(rx, rz) + 5.0
 
 func _elevation_to_height(e: float) -> float:
@@ -200,34 +351,37 @@ func _elevation_to_height(e: float) -> float:
 
 func _apply_variety(tile: Node3D, tile_type: String, q: int, r: int) -> void:
 	# Random rotation in 60° steps and subtle per-instance tint for hills/grass.
-	var rng := RandomNumberGenerator.new()
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	var s: int = world_config.seed if world_config != null else 12345
 	rng.seed = int( (int(s) * 73856093) ^ (q * 19349663) ^ (r * 83492791) ) & 0x7fffffff
 
 	# Orientation variety (all non-water tiles)
-	if tile_type != "water":
-		var rot_steps := rng.randi_range(0, 5)
+	if enable_variety_rotation and tile_type != "water":
+		var rot_steps: int = rng.randi_range(0, 5)
 		tile.rotation.y = rot_steps * PI / 3.0
 
 	# Color tint for hills to add visual variety
-	if tile_type == "hill_low" or tile_type == "hill_high" or tile_type == "grass":
-		var tint_strength := 0.9 + rng.randf() * 0.2 # 0.9 .. 1.1
-		var tint := Color(tint_strength, tint_strength, tint_strength, 1.0)
+	if enable_variety_tint and (tile_type == "hill_low" or tile_type == "hill_high" or tile_type == "grass"):
+		var amp: float = clamp(variety_tint_jitter, 0.0, 0.5)
+		var tint_strength: float = 1.0 - amp + rng.randf() * (2.0 * amp) # 1-amp .. 1+amp
+		var tint: Color = Color(tint_strength, tint_strength, tint_strength, 1.0)
 		_tint_meshes_recursive(tile, tint)
 
 func _tint_meshes_recursive(node: Node, tint: Color) -> void:
 	if node is MeshInstance3D:
-		var mi := node as MeshInstance3D
+		var mi: MeshInstance3D = node as MeshInstance3D
 		if mi.mesh != null:
-			var sc := mi.mesh.get_surface_count()
+			var sc: int = mi.mesh.get_surface_count()
 			for i in range(sc):
 				var base_mat: Material = mi.get_surface_override_material(i)
 				if base_mat == null:
 					base_mat = mi.mesh.surface_get_material(i)
 				if base_mat != null:
-					var dup := base_mat.duplicate()
+					var dup: Material = base_mat.duplicate()
 					if dup is StandardMaterial3D:
-						var sm := dup as StandardMaterial3D
+						var sm: StandardMaterial3D = dup as StandardMaterial3D
+						# Slight roughness boost to reduce specular aliasing along edges
+						sm.roughness = clamp(sm.roughness + 0.05, 0.0, 1.0)
 						sm.albedo_color = sm.albedo_color * tint
 						mi.set_surface_override_material(i, sm)
 	for c in node.get_children():
